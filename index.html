@@ -1,0 +1,41 @@
+<html>
+
+<head>
+	<title>Custom Property</title>
+	<script src="customProperty.js" type="text/javascript"></script>
+	<script type="text/javascript">window.exports = {};</script>
+	<script type="text/javascript" src="test.js"></script>
+</head>
+
+<body>
+
+<script type="text/javascript">
+var Test = {
+	index: 0,
+	tests: Object.keys(exports),
+	imports: Object.CustomPropertyDefinition,
+
+	next: function(){
+		if( this.index <= this.tests.length ){
+			this.index++;
+			exports[this.tests[this.index]].call(null, this);
+		}
+	},
+
+	equal: function(a, b){
+		if( a !== b ){
+			throw new Error(this.tests[this.index] + ' failed, not equal ' + a + ' ' + b);
+		}
+	},
+
+	done: function(){
+		this.next();
+	}
+};
+
+Test.next();
+</script>
+
+</body>
+
+</html>
