@@ -16,7 +16,9 @@ A FAIRE:
 		create: function(object){
 			var proto = Object.create(this);
 			Object.getOwnPropertyNames(object).forEach(function(name){
-				Object.defineProperty(proto, name, Object.getOwnPropertyDescriptor(object, name));
+				var desc = Object.getOwnPropertyDescriptor(object, name);
+				desc.enumerable = false;
+				Object.defineProperty(proto, name, desc);
 			});
 			return proto;
 		},
@@ -29,7 +31,6 @@ A FAIRE:
 	};
 
 	var ObjectCache = proto.create({
-		object: null,
 		value: undefined,
 		exists: null,
 
@@ -63,7 +64,7 @@ A FAIRE:
 	var Notifier = proto.create({
 		listeners: null,
 		bindings: null,
-		index: null,
+		lastIndex: null,
 		lastChange: null,
 
 		init: function(){
@@ -79,12 +80,12 @@ A FAIRE:
 			var listeners = this.listeners, bindings = this.bindings, index = listeners.length;
 
 			while(index--){
-				if( listeners[index] === fn && bindings[index] === fn ) break;
+				if( listeners[index] === fn && bindings[index] === bind ) break;
 			}
 
-			this.index = index;
+			this.lastIndex = index;
 
-			return index;
+			return index != -1;
 		},
 
 		addListener: function(fn, bind){
@@ -106,19 +107,24 @@ A FAIRE:
 				}
 			}
 			else if( this.hasListener(fn, bind) ){
-				this.listeners.splice(this.index, 1);
-				this.bindings.splice(this.index, 1);
+				this.listeners.splice(this.lastIndex, 1);
+				this.bindings.splice(this.lastIndex, 1);
+				this.index--;
 				return true;			
 			}
 
 			return false;
 		},
 
-		notify: function(change, listenerType){
-			var listeners = this.listeners, bindings = this.bindings, i = 0, j = listeners.length, listener;
+		notify: function(change){
+			var listeners = this.listeners, bindings = this.bindings, listener, i;
 
 			this.lastChange = change;
-			for(;i<j;i++){
+			this.index = 0;
+
+			// we don't catch index and length in case removeListener is called during the loop
+			while(this.index < this.listeners.length){
+				i = this.index;
 				listener = listeners[i];
 				if( typeof listener == 'object' ){
 					listener[bindings[i]](change);
@@ -126,6 +132,7 @@ A FAIRE:
 				else{
 					listener.call(bindings[i], change);
 				}
+				this.index++;
 			}
 
 			return this;
@@ -172,6 +179,7 @@ A FAIRE:
 				this.descriptor.value = value;
 			}
 		},
+		Notifier: Notifier,
 
 		object: null,
 		name: null,
@@ -182,6 +190,7 @@ A FAIRE:
 		notifier: null,
 		isHeritable: true,
 		parent: null,
+		filterParents: [Function, Boolean, Array, Object, RegExp, Error, String, Number].map(function(o){ return o.prototype; }),
 		traceChildren: false, // by default, don't trace children to avoid garbage collection issue
 		children: null, // array of object who inherited from this property
 		messages: {
@@ -210,20 +219,25 @@ A FAIRE:
 		},
 
 		createParent: function(object){
-			var parent = this.new(object, this.name);
+			var parent = CustomPropertyDefinition.new(object, this.name);
 			return parent;
 		},
 
 		createChild: function(object){
-			var child = this.new(object, this.name);
+			var child = CustomPropertyDefinition.new(object, this.name);
 			child.define(this.assignDescriptor({}, this.descriptor));
-			if( this.notifier ) child.notifier = this.notifier;
+		
+			if( this.notifier ){
+				child.notifier = this.notifier;
+			}
+
 			return child;
 		},
 
 		addChild: function(object, value){
 			var child = this.createChild(object);
 			child.set(value, object);
+
 			if( this.traceChildren ) this.children.push(child);
 		},
 
@@ -314,7 +328,7 @@ A FAIRE:
 			};
 		},
 
-		propertyChanged: function(change){
+		propertyChanged: function propertyChanged(change){
 			// lorsqu'on observe la propriété il faut la recalculer dès qu'une sous propriété change
 			if( this.notifier && this.notifier.size !== 0 ){
 				this.set(this.getValue(change.object), change.object);
@@ -324,55 +338,52 @@ A FAIRE:
 			}
 		},
 
-		unobserveParent: function(){
-			if( this.parent ){
-				this.notifier.removeListener(this.unobserveParent, this);
-				this.parent.removeListener(this.onParentChange, this);
-				this.parent.unobserveParent();
-				this.parent = null;
-			}
+		removeParentListener: function removeParentListener(){
+			if( this.parent.parent ) this.parent.removeParentListener();
+			this.parent.removeListener(this.onParentChange, this);
+			this.notifier.removeListener(this.removeParentListener, this);
 		},
 
-		onParentChange: function(change){
-			this.unobserveParent();
-			this.notify(change);
-		},
+		onParentChange: function onParentChange(change){
+			this.removeParentListener();
+			this.notifier.notify(change);
+		},		
 
 		addListener: function(fn, bind){
-			var notifier = this.notifier;
-
-			if( notifier === null ){
-				notifier = Notifier.new();
-				this.notifier = notifier;			
+			if( this.notifier === null ){
+				this.notifier = Notifier.new();			
 			}
 
 			if( this.descriptor === null ){ // there is no descriptor
 				if( !Object.prototype.hasOwnProperty.call(this.object, this.name) ){
 					var proto = Object.getPrototypeOf(this.object);
-					if( proto ){
-						this.parent = this.createParent(proto);
+					if( proto !== null && this.filterParents.indexOf(proto) === -1 ){
+						this.parent = this.getFromObject(proto, this.name);
+						if( this.parent === null ){
+							this.parent = CustomPropertyDefinition.new(proto, this.name).define();
+						}
+
+						this.notifier.addListener(this.removeParentListener, this);
+						// lorsque le parent change on peut supprimer la prop
 						this.parent.addListener(this.onParentChange, this);
-						notifier.addListener(this.unobserveParent, this);
 					}
 				}
+				
 				this.define();
 			}
 			else if( this.descriptor.writable === false ){
 				throw new TypeError(this.messages.neverChanges);
-			}
+			}		
 
-			return notifier.addListener(fn, bind);
+			return this.notifier.addListener(fn, bind);
 		},
 
 		removeListener: function(fn, bind){
 			var notifier = this.notifier;
 			if( notifier === null ) return false;
 			if( notifier.removeListener(fn, bind) === false ) return false;
-
 			// a customProperty was set to be observed, but there is no listener anymore
-			if( notifier.size === 0 && this.cache === null && this.subproperties === null ){
-				this.rollback();
-			}
+			if( notifier.size === 0 ) this.checkRollBack();
 
 			return true;
 		},
@@ -388,6 +399,14 @@ A FAIRE:
 			}
 
 			return customPropertyDefinition;
+		},
+
+		getFromObject: function(object, name){
+			var propertyDescriptor = Object.getOwnPropertyDescriptor(object, name);
+			if( propertyDescriptor ){
+				return this.getFromPropertyDescriptor(propertyDescriptor);
+			}
+			return null;
 		},
 
 		setInPropertyDescriptor: function(propertyDescriptor){
@@ -406,8 +425,16 @@ A FAIRE:
 
 			propertyDescriptor.get = this.createGetter();
 			propertyDescriptor.set = this.createSetter();
+			delete propertyDescriptor.value;
+			delete propertyDescriptor.writable;
 
 			return propertyDescriptor;
+		},
+
+		checkRollBack: function(){
+			if( this.cache === null && this.subproperties === null ){
+				this.rollback();
+			}
 		},
 
 		rollback: function(){
@@ -423,8 +450,10 @@ A FAIRE:
 			}
 		},
 
-		invalidCacheWhenSubPropertyChange: function(){
-			// todo
+		invalidCacheWhenSubPropertyChange: function(object, subproperties){
+			subproperties.forEach(function(propertyName){
+				API.addPropertyListener(object, propertyName, this.propertyChanged, this);
+			}, this);
 		},
 
 		define: function(descriptor){
@@ -444,9 +473,8 @@ A FAIRE:
 					if( false === 'get' in descriptor ){
 						throw new TypeError(this.messages.unspecifiedGet);
 					}
-					this.cache = ObjectCache.new(object);
+					this.cache = ObjectCache.new();
 					if( 'value' in descriptor ){
-						delete descriptor.value;
 						this.cache.set(descriptor.value);
 					}
 				}
@@ -474,7 +502,14 @@ A FAIRE:
 			this.getValue = this.getValueGetter(descriptor);
 			this.propertyDescriptor = this.createPropertyDescriptor(descriptor);		
 			this.setInPropertyDescriptor(this.propertyDescriptor);
-			Object.defineProperty(object, name, this.propertyDescriptor);
+			
+			try{
+				Object.defineProperty(object, name, this.propertyDescriptor);
+			}
+			catch(e){
+				console.log(descriptor, this.propertyDescriptor);
+				throw e;
+			}
 
 			return this;
 		}
@@ -484,20 +519,11 @@ A FAIRE:
 		currentCustomProperty: null,
 
 		hasOwnCustomProperty: function(object, name){
-			if( Object.prototype.hasOwnProperty.call(object, name) ){
-				var descriptor = Object.getOwnPropertyDescriptor(object, name);
-				this.currentCustomProperty = CustomPropertyDefinition.getFromPropertyDescriptor(descriptor);
-				return true;
-			}
-
-			return false;	
+			return CustomPropertyDefinition.getFromObject(object, name) !== null;
 		},
 
 		getOwnCustomProperty: function(object, name){
-			if( this.hasOwnCustomProperty(object, name) ){
-				return this.currentCustomProperty;
-			}
-			return null;
+			return CustomPropertyDefinition.getFromObject(object, name);
 		},
 
 		getOwnCustomPropertyDescriptor: function(object, name){
@@ -510,10 +536,7 @@ A FAIRE:
 		},
 
 		addPropertyListener: function(object, name, fn, bind){
-			var propertyDescriptor = Object.getOwnPropertyDescriptor(object, name), customDefinition;
-			if( propertyDescriptor ){
-				customDefinition = CustomPropertyDefinition.getFromPropertyDescriptor(propertyDescriptor);
-			}
+			var customDefinition = CustomPropertyDefinition.getFromObject(object, name);
 			if( customDefinition === null ){
 				customDefinition = CustomPropertyDefinition.new(object, name);
 			}
@@ -521,11 +544,8 @@ A FAIRE:
 		},
 
 		removePropertyListener: function(object, name, fn, bind){
-			var propertyDescriptor = Object.getOwnPropertyDescriptor(object, name);
-			if( propertyDescriptor === null ) return false;
-			var customDefinition = CustomPropertyDefinition.getFromPropertyDescriptor(propertyDescriptor);
-			if( customDefinition === null ) return false;
-			return customDefinition.removeListener(fn, bind);
+			var customDefinition = CustomPropertyDefinition.getFromObject(object, name);
+			return customDefinition ? customDefinition.removeListener(fn, bind) : false;
 		}
 	};
 

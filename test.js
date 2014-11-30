@@ -1,3 +1,52 @@
+exports['notifier removeListener'] = function(test){
+	var notifier = test.imports.Notifier.new();
+	var passed = false;
+
+	function removeListener(){
+		notifier.removeListener(removeListener);
+	}
+
+	function log(){
+		passed = true;
+	}
+
+	notifier.addListener(removeListener);
+	notifier.addListener(log);
+	notifier.notify();
+
+	test.equal(passed, true);
+	test.equal(notifier.size, 1);
+	test.done();
+};
+
+exports['can retrieve customProperty from object'] = function(test){
+	var parent = {};
+	var object = Object.create(parent);
+	var definitionA = test.imports.new(parent, 'foo').define();
+	var definitionB = test.imports.new(object, 'foo').define();
+
+	test.equal(definitionA, test.imports.getFromObject(parent, 'foo'));
+	test.equal(definitionB, test.imports.getFromObject(object, 'foo'));
+	test.done();	
+};
+
+exports['parent changes ignored once whil property is set'] = function(test){
+	var parent = {};
+	var object = Object.create(parent);
+	var definition = test.imports.new(object, 'name');
+	var change;
+
+	definition.addListener(function test(){ change = arguments[0]; }, 'test');
+
+	console.log(definition);
+	
+	object.name = 'ok';
+	parent.name = 'hey';
+
+	test.equal(change.value, 'ok');
+	test.done();
+};
+
 exports['customProperty get/set right value'] = function(test){
 	var object = {};
 	var a = Object.create(object);
@@ -54,24 +103,26 @@ exports['cache of composed properties invalidation'] = function(test){
 		cache: true
 	});
 
+	var expectedCount = 1;
+
 	object.fullName;
-	test.equal(count, 1);
+	test.equal(count, expectedCount);
 	child.fullName;
-	test.equal(count, 1);
+	test.equal(count, expectedCount);
 
 	object.firstName = 'sandra';
 	child.fullName;
-	test.equal(count, 2); // firstName of object has been modified, cache for child & object for 'fullName' expires
+	test.equal(count, ++expectedCount); // firstName of object has been modified, cache for child & object for 'fullName' expires
 
 	child.lastName = 'machefer';
 	child.fullName;
-	test.equal(count, 3);
+	test.equal(count, ++expectedCount); // ça fail, je suppose savoir pourquoi
 
 	object.lastName = 'grassiot';
 	child.fullName;
-	test.equal(count, 3);
+	test.equal(count, expectedCount);
 	object.fullName;
-	test.equal(count, 4); // lastName of object has been modified but child.lastName exists, cache is still valid
+	test.equal(count, ++expectedCount); // lastName of object has been modified but child.lastName exists, cache is still valid
 
 	test.done();
 };
