@@ -37,8 +37,6 @@ exports['parent changes ignored once whil property is set'] = function(test){
 	var change;
 
 	definition.addListener(function test(){ change = arguments[0]; }, 'test');
-
-	console.log(definition);
 	
 	object.name = 'ok';
 	parent.name = 'hey';
@@ -74,16 +72,15 @@ exports['cache call getter on demand, even on child objects'] = function(test){
 			return getterValue;
 		},
 		cache: true
-	});
+	});	
 
-	value = object.cached;
-	value = object.cached;
-	childValue = child.cached;
+	test.equal(object.cached, 'foo', 'parent');
+	test.equal(child.cached, 'foo', 'child');
+
 	object.cached = 'bar';
+	test.equal(object.cached, 'bar', 'parent bar');	
+	test.equal(child.cached, 'bar', 'child bar');
 
-	test.equal(value, getterValue);	
-	test.equal(childValue, getterValue);
-	test.equal(child.cached, 'bar');
 	test.equal(count, 1);
 
 	test.done();
@@ -116,11 +113,12 @@ exports['cache of composed properties invalidation'] = function(test){
 
 	child.lastName = 'machefer';
 	child.fullName;
-	test.equal(count, ++expectedCount); // ça fail, je suppose savoir pourquoi
+	test.equal(count, ++expectedCount, 'machefer');
 
 	object.lastName = 'grassiot';
 	child.fullName;
-	test.equal(count, expectedCount);
+	test.equal(count, expectedCount, 'grassiot');
+
 	object.fullName;
 	test.equal(count, ++expectedCount); // lastName of object has been modified but child.lastName exists, cache is still valid
 
@@ -130,14 +128,14 @@ exports['cache of composed properties invalidation'] = function(test){
 exports['observe + unobserve restore the property'] = function(test){
 	var object = {};
 	var child = Object.create(object);
-	var listener = function(){};
-	var def = test.imports.new(object, 'name');
+	function listener(){}
+	var def = test.imports.new(child, 'name');
 
 	def.addListener(listener);
 	object.name = 'foo';
 	def.removeListener(listener);
 
-	test.equal('name' in child, false);
+	test.equal(child.hasOwnProperty('name'), false);
 	test.equal(object.name, 'foo');
 	test.done();
 };

@@ -188,10 +188,11 @@ A FAIRE:
 		propertyDescriptor: null, // the current porpertyDescriptor	
 		cache: null,
 		notifier: null,
+		subproperties: null,
 		isHeritable: true,
 		parent: null,
 		filterParents: [Function, Boolean, Array, Object, RegExp, Error, String, Number].map(function(o){ return o.prototype; }),
-		traceChildren: false, // by default, don't trace children to avoid garbage collection issue
+		traceChildren: !false, // by default, don't trace children to avoid garbage collection issue
 		children: null, // array of object who inherited from this property
 		messages: {
 			invalidObject: 'customProperty object must be an object',
@@ -225,7 +226,10 @@ A FAIRE:
 
 		createChild: function(object){
 			var child = CustomPropertyDefinition.new(object, this.name);
-			child.define(this.assignDescriptor({}, this.descriptor));
+			var childDescriptor = {};
+			for(var key in this.descriptor ) childDescriptor[key] = this.descriptor[key];
+
+			child.define(childDescriptor);
 		
 			if( this.notifier ){
 				child.notifier = this.notifier;
@@ -234,11 +238,10 @@ A FAIRE:
 			return child;
 		},
 
-		addChild: function(object, value){
+		addChild: function(object){
 			var child = this.createChild(object);
-			child.set(value, object);
-
 			if( this.traceChildren ) this.children.push(child);
+			return child;
 		},
 
 		getValue: null,
@@ -289,7 +292,7 @@ A FAIRE:
 		set: function(value, object){
 			if( this.object !== object ){ // happen once per object because after this object got his own setter
 				if( this.isHeritable ){
-					this.addChild(object, value);
+					this.addChild(object).set(value, object);
 				}
 				else{
 					Object.defineProperty(object, this.name, {value: value});
@@ -331,10 +334,17 @@ A FAIRE:
 		propertyChanged: function propertyChanged(change){
 			// lorsqu'on observe la propriété il faut la recalculer dès qu'une sous propriété change
 			if( this.notifier && this.notifier.size !== 0 ){
-				this.set(this.getValue(change.object), change.object);
+				change.object[this.name] = this.getValue(change.object);
 			}
 			else if( this.cache ){
-				this.cache.delete();
+				if( change.object === this.object ){
+					this.cache.delete();
+				}
+				else{
+					// le cache a changé dans un enfant
+					// le cache n'est plus héritable, mais que pour cet objet
+					this.addChild(change.object);
+				}
 			}
 		},
 
@@ -428,6 +438,8 @@ A FAIRE:
 			delete propertyDescriptor.value;
 			delete propertyDescriptor.writable;
 
+			if( !('configurable' in propertyDescriptor) ) propertyDescriptor.configurable = true;
+
 			return propertyDescriptor;
 		},
 
@@ -503,13 +515,7 @@ A FAIRE:
 			this.propertyDescriptor = this.createPropertyDescriptor(descriptor);		
 			this.setInPropertyDescriptor(this.propertyDescriptor);
 			
-			try{
-				Object.defineProperty(object, name, this.propertyDescriptor);
-			}
-			catch(e){
-				console.log(descriptor, this.propertyDescriptor);
-				throw e;
-			}
+			Object.defineProperty(object, name, this.propertyDescriptor);
 
 			return this;
 		}

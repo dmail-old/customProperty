@@ -16,16 +16,16 @@ var Test = {
 	imports: Object.CustomPropertyDefinition,
 
 	next: function(){
-		if( this.index <= this.tests.length ){			
+		if( this.index < this.tests.length ){			
 			var index = this.index;
 			this.index++;
 			exports[this.tests[index]].call(null, this);
 		}
 	},
 
-	equal: function(a, b){
+	equal: function(a, b, reason){
 		if( a !== b ){
-			throw new Error(this.tests[this.index-1] + ' failed, not equal ' + a + ' ' + b);
+			throw new Error(this.tests[this.index-1] + ' failed, not equal ' + a + ' ' + b + ' reason :' + reason);
 		}
 	},
 
