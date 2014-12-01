@@ -1,9 +1,11 @@
 CustomProperty
 =============
 
-Using custom setter/getter provided by Object.defineProperty, customProperty allow to create computed property, cached property and listen for property change.
+Using Object.defineProperty, CustomProperty can create computed property and listen for change.
 
 ## Example
+
+[customProperty.js](./customProperty.js) has no dependency and let you do the following : 
 
 ```javascript
 var user = {firstName: 'damien', lastName: 'maillard'};
@@ -17,7 +19,7 @@ Object.defineCustomProperty(user, 'fullName', {
 		return fullName.split(' ');
 	}
 });
-Object.addPropertyListener(user, 'fullName', function(change){ console.log(change); });
+Object.addPropertyListener(user, 'fullName', console.log, console);
 
 user.fullName; // 'damien maillard'
 user.fullName = 'john smith'; // {type: 'updated', name: 'fullName', oldValue: 'damien maillard', value: 'John Smith', object: user}
@@ -50,7 +52,7 @@ Object.defineCustomProperty(user, 'fullName', {
 });
 ```
 
-## Cached property
+## Caching property
 
 A cached property must provide a get method.  
 The result of the get method will be cached per object to minimize the number of call to the get method.
@@ -68,8 +70,7 @@ item.cachedValue; // return complexGetter.call(item)
 item.cachedValue; // hit the cache
 ```
 
-When you cache a computedProperty, any subproperty change will invalidate the cache for the computedProperty.
-
+When you cache a computedProperty, any subproperty change will invalidate the cache.
 
 ```javascript
 var user = {firstName: 'damien', lastName: 'maillard'};
@@ -116,27 +117,26 @@ Object.addPropertyListener(user, 'fullName', function(change){ console.log(chang
 user.firstName = 'foo'; // {type: 'updated', name: 'fullName', oldValue: 'John Smith', value: 'foo Smith', object: user};
 ```
 
-## Call property definition before property listening
+## Always define the property before listening change
 
-Always define your property before listening to them.  
+Object.defineCustomProperty will erase listener of the property, for example :  
 
 ```javascript
 var user = {foo: 'bar'};
-
-// when you listen before define
 Object.addPropertyListener(user, 'foo', console.log, console);
 Object.defineCustomProperty(user, 'foo', {cache: true, get: function(){ return 'test'; });
-
-user.foo = 'boo'; // console.log not called because defineCustomProperty erase all listeners
-
-// when you define before listen
-Object.defineCustomProperty(user, 'foo', {cache: true, get: function(){ return 'test'; });
-Object.addPropertyListener(user, 'foo', console.log, console);
-
-user.foo = 'bat'; // console.log is called
+user.foo = 'boo'; // console.log not called
 ```
 
-## Warning on listening over a non existent property
+You must define the property then listen for changes like so :
+```javascript
+var user = {foo: 'bar'};
+Object.defineCustomProperty(user, 'foo', {cache: true, get: function(){ return 'test'; });
+Object.addPropertyListener(user, 'foo', console.log, console);
+user.foo = 'boo'; // console.log is called
+```
+
+## Listening non existent property
 
 Listening for a non existing property will define a property on the object.
 
@@ -146,4 +146,11 @@ Object.addPropertyListener(o, 'name', listener);
 'name' in o; // true
 ```
 
+## API
 
+- Object.defineCustomProperty(object, name, descriptor)
+- Object.hasOwnCustomProperty(object, name)
+- Object.getOwnCustomProperty(object, name)
+- Object.getOwnCustomPropertyDescriptor(object, name)
+- Object.addPropertyListener(object, name, fn, bind)
+- Object.removePropertyListener(object, name, fn, bind)
