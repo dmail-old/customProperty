@@ -19,7 +19,7 @@ var Test = {
 		if( this.index < this.tests.length ){			
 			var index = this.index;
 			this.index++;
-			exports[this.tests[index]].call(null, this);
+			exports[this.tests[index]].call(null, this, this.imports);
 		}
 	},
 

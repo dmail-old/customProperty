@@ -1,17 +1,17 @@
-exports['notifier removeListener'] = function(test){
-	var notifier = test.imports.Notifier.new();
+exports['notifier removeListener'] = function(test, CustomProperty){
+	var notifier = CustomProperty.Notifier.new();
 	var passed = false;
 
 	function removeListener(){
-		notifier.removeListener(removeListener);
+		notifier.remove(removeListener);
 	}
 
 	function log(){
 		passed = true;
 	}
 
-	notifier.addListener(removeListener);
-	notifier.addListener(log);
+	notifier.add(removeListener);
+	notifier.add(log);
 	notifier.notify();
 
 	test.equal(passed, true);
@@ -19,21 +19,21 @@ exports['notifier removeListener'] = function(test){
 	test.done();
 };
 
-exports['can retrieve customProperty from object'] = function(test){
+exports['can retrieve customProperty from object'] = function(test, CustomProperty){
 	var parent = {};
 	var object = Object.create(parent);
-	var definitionA = test.imports.new(parent, 'foo').define();
-	var definitionB = test.imports.new(object, 'foo').define();
+	var definitionA = CustomProperty.new(parent, 'foo').define();
+	var definitionB = CustomProperty.new(object, 'foo').define();
 
-	test.equal(definitionA, test.imports.getFromObject(parent, 'foo'));
-	test.equal(definitionB, test.imports.getFromObject(object, 'foo'));
+	test.equal(definitionA, CustomProperty.fromObject(parent, 'foo'));
+	test.equal(definitionB, CustomProperty.fromObject(object, 'foo'));
 	test.done();	
 };
 
-exports['parent changes ignored once whil property is set'] = function(test){
+exports['parent changes ignored once whil property is set'] = function(test, CustomProperty){
 	var parent = {};
 	var object = Object.create(parent);
-	var definition = test.imports.new(object, 'name');
+	var definition = CustomProperty.new(object, 'name');
 	var change;
 
 	definition.addListener(function test(){ change = arguments[0]; }, 'test');
@@ -45,11 +45,11 @@ exports['parent changes ignored once whil property is set'] = function(test){
 	test.done();
 };
 
-exports['customProperty get/set right value'] = function(test){
+exports['customProperty get/set right value'] = function(test, CustomProperty){
 	var object = {};
 	var a = Object.create(object);
 	var b = Object.create(object);
-	var customProperty = test.imports.new(object, 'name').define({});
+	var customProperty = CustomProperty.new(object, 'name').define({});
 
 	a.name = 'foo';
 	b.name = 'bar';
@@ -58,7 +58,7 @@ exports['customProperty get/set right value'] = function(test){
 	test.done();
 };
 
-exports['cache call getter on demand, even on child objects'] = function(test){
+exports['cache call getter on demand, even on child objects'] = function(test, CustomProperty){
 	var object = {};
 	var count = 0;
 	var value;
@@ -66,7 +66,7 @@ exports['cache call getter on demand, even on child objects'] = function(test){
 	var childValue;
 	var getterValue = 'foo';
 	
-	test.imports.new(object, 'cached').define({
+	CustomProperty.new(object, 'cached').define({
 		get: function(){
 			count++;
 			return getterValue;
@@ -86,12 +86,12 @@ exports['cache call getter on demand, even on child objects'] = function(test){
 	test.done();
 };
 
-exports['cache of composed properties invalidation'] = function(test){
+exports['cache of composed properties invalidation'] = function(test, CustomProperty){
 	var object = {firstName: 'john', lastName: 'smith'};
 	var child = Object.create(object);
 	var count = 0;
 	var fullName;
-	var definition = test.imports.new(object, 'fullName').define({
+	var definition = CustomProperty.new(object, 'fullName').define({
 		subproperties: ['firstName', 'lastName'],
 		get: function(firstName, lastName){
 			count++;
@@ -125,17 +125,14 @@ exports['cache of composed properties invalidation'] = function(test){
 	test.done();
 };
 
-exports['observe + unobserve restore the property'] = function(test){
+exports['observe + unobserve restore the property'] = function(test, CustomProperty){
 	var object = {};
-	var child = Object.create(object);
 	function listener(){}
-	var def = test.imports.new(child, 'name');
+	var def = CustomProperty.new(object, 'name');
 
 	def.addListener(listener);
-	object.name = 'foo';
 	def.removeListener(listener);
 
-	test.equal(child.hasOwnProperty('name'), false);
-	test.equal(object.name, 'foo');
+	test.equal('name' in object, false);
 	test.done();
 };

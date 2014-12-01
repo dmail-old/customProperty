@@ -61,81 +61,104 @@ A FAIRE:
 		}
 	});
 
+	/*
+	very similar to Signal : https://github.com/millermedeiros/js-signals/blob/master/src/Signal.js
+	*/
+
+	var Listener = proto.create({
+		fn: null,
+		bind: null,
+		exec: null,
+
+		init: function(fn, bind){
+			if( typeof fn == 'object' ){
+				this.exec = this.execObject;
+			}
+			else if( typeof fn == 'function' ){
+				this.exec = this.execFn;
+			}
+
+			this.fn = fn;
+			this.bind = bind;
+		},
+
+		is: function(fn, bind){
+			return this.fn === fn && this.bind === bind;
+		},
+
+		execObject: function(args){
+			return this.fn[this.bind].apply(this.fn, args);
+		},
+
+		execFn: function(args){
+			return this.fn.apply(this.bind, args);
+		}
+	});
+
 	var Notifier = proto.create({
+		Listener: Listener,
+		size: 0,
+		index: 0,
 		listeners: null,
-		bindings: null,
 		lastIndex: null,
-		lastChange: null,
+		args: null,
 
 		init: function(){
 			this.listeners = [];
-			this.bindings = [];
 		},
 
-		get size(){
-			return this.listeners.length;
+		has: function(fn, bind){
+			this.lastIndex = this.listeners.length;
+			while( this.lastIndex-- && !this.listeners[this.lastIndex].is(fn, bind) );
+			return this.lastIndex != -1;
 		},
 
-		hasListener: function(fn, bind){
-			var listeners = this.listeners, bindings = this.bindings, index = listeners.length;
-
-			while(index--){
-				if( listeners[index] === fn && bindings[index] === bind ) break;
-			}
-
-			this.lastIndex = index;
-
-			return index != -1;
-		},
-
-		addListener: function(fn, bind){
-			if( this.hasListener(fn, bind) ){
+		add: function(fn, bind){
+			if( this.has(fn, bind) ){
 				return false;
 			}
 			else{
-				this.listeners.push(fn);
-				this.bindings.push(bind);
+				this.listeners.push(this.Listener.new(fn, bind));
+				this.size++;
 				return true;
 			}
 		},
 
-		removeListener: function(fn, bind){
-			if( arguments.length === 0 ){
-				if( this.size !== 0 ){
-					this.listeners.length = this.bindings.length = 0;
-					return true;
-				}
-			}
-			else if( this.hasListener(fn, bind) ){
+		remove: function(fn, bind){
+			if( this.has(fn, bind) ){
 				this.listeners.splice(this.lastIndex, 1);
-				this.bindings.splice(this.lastIndex, 1);
 				this.index--;
-				return true;			
+				this.size--;
+				return true;		
 			}
-
 			return false;
 		},
 
-		notify: function(change){
-			var listeners = this.listeners, bindings = this.bindings, listener, i;
+		clear: function(){
+			if( this.size !== 0 ){
+				this.listeners.length = this.size = this.index = 0;
+				return true;
+			}
+			return false;
+		},
 
-			this.lastChange = change;
+		forEach: function(fn, bind){
 			this.index = 0;
-
 			// we don't catch index and length in case removeListener is called during the loop
-			while(this.index < this.listeners.length){
-				i = this.index;
-				listener = listeners[i];
-				if( typeof listener == 'object' ){
-					listener[bindings[i]](change);
-				}
-				else{
-					listener.call(bindings[i], change);
-				}
+			while(this.index < this.size){
+				fn.call(bind, this.listeners[this.index]);
 				this.index++;
 			}
+		},
 
-			return this;
+		execListener: function(listener){
+			listener.exec(this.args);
+		},
+
+		notify: function(){
+			this.args = arguments;
+			this.forEach(this.execListener, this);
+			this.args = null;
 		}
 	});
 
@@ -351,7 +374,7 @@ A FAIRE:
 		removeParentListener: function removeParentListener(){
 			if( this.parent.parent ) this.parent.removeParentListener();
 			this.parent.removeListener(this.onParentChange, this);
-			this.notifier.removeListener(this.removeParentListener, this);
+			this.notifier.remove(this.removeParentListener, this);
 		},
 
 		onParentChange: function onParentChange(change){
@@ -368,12 +391,12 @@ A FAIRE:
 				if( !Object.prototype.hasOwnProperty.call(this.object, this.name) ){
 					var proto = Object.getPrototypeOf(this.object);
 					if( proto !== null && this.filterParents.indexOf(proto) === -1 ){
-						this.parent = this.getFromObject(proto, this.name);
+						this.parent = this.fromObject(proto, this.name);
 						if( this.parent === null ){
 							this.parent = CustomPropertyDefinition.new(proto, this.name).define();
 						}
 
-						this.notifier.addListener(this.removeParentListener, this);
+						this.notifier.add(this.removeParentListener, this);
 						// lorsque le parent change on peut supprimer la prop
 						this.parent.addListener(this.onParentChange, this);
 					}
@@ -385,20 +408,20 @@ A FAIRE:
 				throw new TypeError(this.messages.neverChanges);
 			}		
 
-			return this.notifier.addListener(fn, bind);
+			return this.notifier.add(fn, bind);
 		},
 
 		removeListener: function(fn, bind){
 			var notifier = this.notifier;
 			if( notifier === null ) return false;
-			if( notifier.removeListener(fn, bind) === false ) return false;
+			if( notifier.remove(fn, bind) === false ) return false;
 			// a customProperty was set to be observed, but there is no listener anymore
 			if( notifier.size === 0 ) this.checkRollBack();
 
 			return true;
 		},
 
-		getFromPropertyDescriptor: function(propertyDescriptor){
+		fromPropertyDescriptor: function(propertyDescriptor){
 			var get, customPropertyDefinition = null;
 
 			if( 'get' in propertyDescriptor ){
@@ -411,10 +434,10 @@ A FAIRE:
 			return customPropertyDefinition;
 		},
 
-		getFromObject: function(object, name){
+		fromObject: function(object, name){
 			var propertyDescriptor = Object.getOwnPropertyDescriptor(object, name);
 			if( propertyDescriptor ){
-				return this.getFromPropertyDescriptor(propertyDescriptor);
+				return this.fromPropertyDescriptor(propertyDescriptor);
 			}
 			return null;
 		},
@@ -525,11 +548,11 @@ A FAIRE:
 		currentCustomProperty: null,
 
 		hasOwnCustomProperty: function(object, name){
-			return CustomPropertyDefinition.getFromObject(object, name) !== null;
+			return CustomPropertyDefinition.fromObject(object, name) !== null;
 		},
 
 		getOwnCustomProperty: function(object, name){
-			return CustomPropertyDefinition.getFromObject(object, name);
+			return CustomPropertyDefinition.fromObject(object, name);
 		},
 
 		getOwnCustomPropertyDescriptor: function(object, name){
@@ -542,7 +565,7 @@ A FAIRE:
 		},
 
 		addPropertyListener: function(object, name, fn, bind){
-			var customDefinition = CustomPropertyDefinition.getFromObject(object, name);
+			var customDefinition = CustomPropertyDefinition.fromObject(object, name);
 			if( customDefinition === null ){
 				customDefinition = CustomPropertyDefinition.new(object, name);
 			}
@@ -550,7 +573,7 @@ A FAIRE:
 		},
 
 		removePropertyListener: function(object, name, fn, bind){
-			var customDefinition = CustomPropertyDefinition.getFromObject(object, name);
+			var customDefinition = CustomPropertyDefinition.fromObject(object, name);
 			return customDefinition ? customDefinition.removeListener(fn, bind) : false;
 		}
 	};
